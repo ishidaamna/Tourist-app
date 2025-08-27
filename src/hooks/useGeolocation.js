@@ -1,20 +1,20 @@
 import { useState, useEffect } from "react";
-import { sortPlacesByDistance } from "../loc";
 import { AVAILABLE_PLACES } from "../data";
-
+import { sortPlacesByDistance } from "../loc";
 export const useGeolocation = (options = {}) => {
   const [position, setPosition] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [places, setPlaces] = useState(AVAILABLE_PLACES); 
-
+  const [availablePlaces, setAvailablePlaces] = useState(AVAILABLE_PLACES);
+  const [fallbackText, setFallbackText] = useState("Sorting places by distance...");
   useEffect(() => {
     if (!navigator.geolocation) {
       setError(new Error("Geolocation is not supported by this browser"));
       setLoading(false);
+      setAvailablePlaces(AVAILABLE_PLACES);
+      setFallbackText("Unable to get location. Showing all available places.");
       return;
     }
-
     const defaultOptions = {
       enableHighAccuracy: true,
       timeout: 10000,
@@ -22,32 +22,88 @@ export const useGeolocation = (options = {}) => {
       ...options,
     };
 
-    const handleSuccess = (pos) => {
-      setPosition(pos);
+    const maxRetries = typeof options.retries === "number" ? options.retries : 2;
+    const retryDelayMs = typeof options.retryDelayMs === "number" ? options.retryDelayMs : 1000;
+
+    let attempts = 0;
+    let retryTimeoutId = null;
+    let isActive = true;
+
+    const handleSuccess = (position) => {
+      if (!isActive) return;
+      setPosition(position);
       setError(null);
       setLoading(false);
-
-      
       const sorted = sortPlacesByDistance(
         AVAILABLE_PLACES,
-        pos.coords.latitude,
-        pos.coords.longitude
+        position.coords.latitude,
+        position.coords.longitude
       );
-      setPlaces(sorted);
+      setAvailablePlaces(sorted);
+      setFallbackText("Sorting places by distance...");
     };
 
-    const handleError = (err) => {
-      setError(err);
+    const requestPosition = () => {
+      if (!isActive) return;
+      navigator.geolocation.getCurrentPosition(
+        handleSuccess,
+        handleError,
+        defaultOptions
+      );
+    };
+
+    const scheduleRetry = () => {
+      if (!isActive) return;
+      if (attempts >= maxRetries) {
+        // Exhausted retries; surface error and stop loading
+        setLoading(false);
+        setAvailablePlaces(AVAILABLE_PLACES);
+        setFallbackText("Unable to get location. Showing all available places.");
+        return false;
+      }
+      attempts += 1;
+      const delay = retryDelayMs * attempts; // simple backoff
+      retryTimeoutId = setTimeout(requestPosition, delay);
+      return true;
+    };
+
+    const handleError = (geoError) => {
+      if (!isActive) return;
+      let errorMessage;
+      switch (geoError.code) {
+        case geoError.PERMISSION_DENIED:
+          errorMessage = "Location access denied by user";
+          setError(new Error(errorMessage));
+          setLoading(false);
+          setAvailablePlaces(AVAILABLE_PLACES);
+          setFallbackText("Unable to get location. Showing all available places.");
+          return;
+        case geoError.POSITION_UNAVAILABLE:
+          errorMessage = "Location information unavailable";
+          // Temporary on Apple (kCLErrorLocationUnknown). Retry a few times.
+          if (scheduleRetry()) return;
+          break;
+        case geoError.TIMEOUT:
+          errorMessage = "Location request timed out";
+          // Retry once or twice on timeout as well.
+          if (scheduleRetry()) return;
+          break;
+        default:
+          errorMessage = "An unknown error occurred while retrieving location";
+          break;
+      }
+      setError(new Error(errorMessage));
       setLoading(false);
-      setPlaces(AVAILABLE_PLACES);
+      setAvailablePlaces(AVAILABLE_PLACES);
+      setFallbackText("Unable to get location. Showing all available places.");
     };
 
-    navigator.geolocation.getCurrentPosition(
-      handleSuccess,
-      handleError,
-      defaultOptions
-    );
-  }, []);
+    requestPosition();
 
-  return { position, error, loading, places };
+    return () => {
+      isActive = false;
+      if (retryTimeoutId) clearTimeout(retryTimeoutId);
+    };
+  }, []);
+  return { position, error, loading, availablePlaces, fallbackText };
 };

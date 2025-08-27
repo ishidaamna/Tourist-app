@@ -3,22 +3,54 @@ import { useRef, useState, useEffect } from "react";
 import Places from "./components/Places.jsx";
 import Modal from "./components/Modal.jsx";
 import DeleteConfirmation from "./components/DeleteConfirmation.jsx";
+import { AVAILABLE_PLACES } from "./data.js";
+import { sortPlacesByDistance } from "./loc.js";
 import logoImg from "./assets/logo.png";
 
+import { getFromLocalStorage } from "./utils/localStorage.js";
 import { useGeolocation } from "./hooks/useGeolocation.js";
 import { useLocalStorageState } from "./hooks/useLocalStorageState.js";
-import { AVAILABLE_PLACES } from "./data.js";
+
+const initializePickedPlaces = () => {
+  const storedIds = getFromLocalStorage("selectedPlaces", []);
+  return storedIds
+    .map((id) => AVAILABLE_PLACES.find((place) => place.id === id))
+    .filter(Boolean);
+};
 
 function App() {
   const selectedPlace = useRef();
   const [modalIsOpen, setModalIsOpen] = useState(false);
+  const [availablePlaces, setAvailablePlaces] = useState([]);
+  const [pickedPlaces, setPickedPlaces] = useState(initializePickedPlaces);
 
   const [pickedPlaceIds, setPickedPlaceIds] = useLocalStorageState(
     "selectedPlaces",
     []
   );
+  const {
+    position,
+    error: geoError,
+    loading: geoLoading,
+  } = useGeolocation({
+    enableHighAccuracy: true,
+    timeout: 10000,
+    maximumAge: 300000,
+  });
 
-  const [pickedPlaces, setPickedPlaces] = useState([]);
+  useEffect(() => {
+    if (position) {
+      const sortedPlaces = sortPlacesByDistance(
+        AVAILABLE_PLACES,
+        position.coords.latitude,
+        position.coords.longitude
+      );
+      setAvailablePlaces(sortedPlaces);
+    } else if (geoError) {
+      console.warn("Geolocation failed:", geoError.message);
+      setAvailablePlaces(AVAILABLE_PLACES);
+    }
+  }, [position, geoError]);
 
   useEffect(() => {
     const places = pickedPlaceIds
@@ -27,37 +59,36 @@ function App() {
     setPickedPlaces(places);
   }, [pickedPlaceIds]);
 
-  const {
-    error: geoError,
-    loading: geoLoading,
-    places: availablePlaces,
-  } = useGeolocation();
-
-  const getAvailablePlacesFallbackText = () => {
-    if (geoLoading)
-      return "Getting your location to sort places by distance...";
-    if (geoError)
-      return "Unable to get location. Showing all available places.";
-    return "Sorting places by distance...";
-  };
-
   const handleStartRemovePlace = (id) => {
     selectedPlace.current = id;
     setModalIsOpen(true);
   };
 
-  const handleStopRemovePlace = () => setModalIsOpen(false);
+  const handleStopRemovePlace = () => {
+    setModalIsOpen(false);
+  };
 
   const handleSelectPlace = (id) => {
-    if (!pickedPlaceIds.includes(id)) {
-      setPickedPlaceIds((prev) => [id, ...prev]);
+    if (pickedPlaceIds.includes(id)) {
+      return;
     }
+    setPickedPlaceIds((prevIds) => [id, ...prevIds]);
   };
 
   const handleRemovePlace = () => {
     const idToRemove = selectedPlace.current;
-    setPickedPlaceIds((prev) => prev.filter((id) => id !== idToRemove));
+    setPickedPlaceIds((prevIds) => prevIds.filter((id) => id !== idToRemove));
     setModalIsOpen(false);
+  };
+
+  const getAvailablePlacesFallbackText = () => {
+    if (geoLoading) {
+      return "Getting your location to sort places by distance...";
+    }
+    if (geoError) {
+      return "Unable to get location. Showing all available places.";
+    }
+    return "Sorting places by distance...";
   };
 
   return (
