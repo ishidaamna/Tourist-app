@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
+import { sortPlacesByDistance } from "../loc";
+import { AVAILABLE_PLACES } from "../data";
 
 export const useGeolocation = (options = {}) => {
   const [position, setPosition] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [places, setPlaces] = useState(AVAILABLE_PLACES); 
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -19,31 +22,24 @@ export const useGeolocation = (options = {}) => {
       ...options,
     };
 
-    const handleSuccess = (position) => {
-      setPosition(position);
+    const handleSuccess = (pos) => {
+      setPosition(pos);
       setError(null);
       setLoading(false);
+
+      
+      const sorted = sortPlacesByDistance(
+        AVAILABLE_PLACES,
+        pos.coords.latitude,
+        pos.coords.longitude
+      );
+      setPlaces(sorted);
     };
 
-    const handleError = (error) => {
-      let errorMessage;
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          errorMessage = "Location access denied by user";
-          break;
-        case error.POSITION_UNAVAILABLE:
-          errorMessage = "Location information unavailable";
-          break;
-        case error.TIMEOUT:
-          errorMessage = "Location request timed out";
-          break;
-        default:
-          errorMessage = "An unknown error occurred while retrieving location";
-          break;
-      }
-
-      setError(new Error(errorMessage));
+    const handleError = (err) => {
+      setError(err);
       setLoading(false);
+      setPlaces(AVAILABLE_PLACES);
     };
 
     navigator.geolocation.getCurrentPosition(
@@ -53,5 +49,5 @@ export const useGeolocation = (options = {}) => {
     );
   }, []);
 
-  return { position, error, loading };
+  return { position, error, loading, places };
 };
