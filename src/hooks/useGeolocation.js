@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { AVAILABLE_PLACES } from "../data";
 import { sortPlacesByDistance } from "../loc";
+
 export const useGeolocation = (options = {}) => {
   const [position, setPosition] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [availablePlaces, setAvailablePlaces] = useState(AVAILABLE_PLACES);
   const [fallbackText, setFallbackText] = useState("Sorting places by distance...");
+
   useEffect(() => {
     if (!navigator.geolocation) {
       setError(new Error("Geolocation is not supported by this browser"));
@@ -15,6 +17,7 @@ export const useGeolocation = (options = {}) => {
       setFallbackText("Unable to get location. Showing all available places.");
       return;
     }
+
     const defaultOptions = {
       enableHighAccuracy: true,
       timeout: 10000,
@@ -104,6 +107,24 @@ export const useGeolocation = (options = {}) => {
       isActive = false;
       if (retryTimeoutId) clearTimeout(retryTimeoutId);
     };
-  }, []);
-  return { position, error, loading, availablePlaces, fallbackText };
+  }, [options]);
+
+  const getAvailablePlacesFallbackText = () => {
+    if (loading) {
+      return "Getting your location to sort places by distance...";
+    }
+    if (error) {
+      return "Unable to get location. Showing all available places.";
+    }
+    return "Sorting places by distance...";
+  };
+
+  return { 
+    position, 
+    error, 
+    loading, 
+    availablePlaces, 
+    fallbackText,
+    getAvailablePlacesFallbackText 
+  };
 };

@@ -4,7 +4,6 @@ import Places from "./components/Places.jsx";
 import Modal from "./components/Modal.jsx";
 import DeleteConfirmation from "./components/DeleteConfirmation.jsx";
 import { AVAILABLE_PLACES } from "./data.js";
-import { sortPlacesByDistance } from "./loc.js";
 import logoImg from "./assets/logo.png";
 
 import { getFromLocalStorage } from "./utils/localStorage.js";
@@ -19,38 +18,23 @@ const initializePickedPlaces = () => {
 };
 
 function App() {
-  const selectedPlace = useRef();
   const [modalIsOpen, setModalIsOpen] = useState(false);
-  const [availablePlaces, setAvailablePlaces] = useState([]);
+  const selectedPlace = useRef();
   const [pickedPlaces, setPickedPlaces] = useState(initializePickedPlaces);
 
   const [pickedPlaceIds, setPickedPlaceIds] = useLocalStorageState(
     "selectedPlaces",
     []
   );
+
   const {
-    position,
-    error: geoError,
-    loading: geoLoading,
+    availablePlaces,
+    getAvailablePlacesFallbackText,
   } = useGeolocation({
     enableHighAccuracy: true,
     timeout: 10000,
     maximumAge: 300000,
   });
-
-  useEffect(() => {
-    if (position) {
-      const sortedPlaces = sortPlacesByDistance(
-        AVAILABLE_PLACES,
-        position.coords.latitude,
-        position.coords.longitude
-      );
-      setAvailablePlaces(sortedPlaces);
-    } else if (geoError) {
-      console.warn("Geolocation failed:", geoError.message);
-      setAvailablePlaces(AVAILABLE_PLACES);
-    }
-  }, [position, geoError]);
 
   useEffect(() => {
     const places = pickedPlaceIds
@@ -79,16 +63,6 @@ function App() {
     const idToRemove = selectedPlace.current;
     setPickedPlaceIds((prevIds) => prevIds.filter((id) => id !== idToRemove));
     setModalIsOpen(false);
-  };
-
-  const getAvailablePlacesFallbackText = () => {
-    if (geoLoading) {
-      return "Getting your location to sort places by distance...";
-    }
-    if (geoError) {
-      return "Unable to get location. Showing all available places.";
-    }
-    return "Sorting places by distance...";
   };
 
   return (
